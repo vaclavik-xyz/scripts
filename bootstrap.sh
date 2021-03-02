@@ -4,12 +4,39 @@
 # Test to see if user is running with root privileges.
 if [[ "${UID}" -ne 0 ]]
 then
- echo 'Must execute with sudo or root' >&2
- exit 1
+    echo 'Must execute with sudo or root' >&2
+    exit 1
 fi
+
+# PACKAGE GROUPS
+
+# codecs from packman (must be run as first package group
+CODECS='--from packman ffmpeg gstreamer-plugins-{good,bad,ugly,libav} libavcodec-full vlc-codecs'
+
+# commandline packages
+CLI='vim tmux zsh neofetch stow speedtest-cli'
+
+# web packages
+WEB='torbrowser-launcher brave-browser qbittorrent' 
+
+# system packages
+SYSTEM='opi libvulkan_intel libvulkan_intel-32bit'
+
+# development packages
+DEV='git make gcc curl'
+
+# other applications
+APPS='vlc lollypop steam gnome-boxes lutris libreoffice gimp'
+
+# dependencies for solarc-theme https://github.com/schemar/solarc-theme 
+SOLARC='autoconf automake sassc pkg-config optipng inkscape gtk3-devel gtk2-engine-murrine'
+
+# install flatpaks
+FLATPAK='flathub com.discordapp.Discord com.github.tchx84.Flatseal com.microsoft.Teams com.skype.Client com.spotify.Client com.github.johnfactotum.Foliate com.bitwarden.desktop com.github.maoschanz.drawing'
 
 # Zypper global-options
 ZYPPER='zypper --no-cd'
+
 
 # Update repo info and update system
 system_upgrade() {
@@ -22,7 +49,7 @@ system_upgrade() {
 }
 
 # Install official and unofficial community repositories
-install_repo() {
+install_repos() {
     echo 'Installing and refreshing community repositories'
 
     # Packman repo
@@ -35,7 +62,6 @@ install_repo() {
     fi
 
     # After adding packman repository be sure to switch system package to those in packman as a mix of both can cause a variety of issues.
-
     $ZYPPER dup --from packman --allow-vendor-change
 
     # Cryptocurrency repository
@@ -56,39 +82,81 @@ install_repo() {
 
     # Refresh repositories
     echo 'Updating repositories information...'
+
     # refresh all repos and automatically accept all GPG keys
     $ZYPPER --gpg-auto-import-keys refresh
     main
 }
 
+install_flatpak() {
+    echo 'Installing flatpak...'
+    $ZYPPER install flatpak
+
+    echo 'Adding flathub repo...'
+    flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+	
+	echo 'Installing flatpaks'
+	flatpak install -y $FLATPAK
+}
+
+install_repo_pkgs() {
+	install_repos
+	$ZYPPER install $CODECS \
+                    $CLI \
+                    $WEB \
+                    $SYSTEM \
+                    $DEV \
+                    $APPS \
+                    $SOLARC
+}
+
 install_packages() {
-    $ZYPPER install $CODECS \
+	INPUT=0
+ 	echo ''
+ 	echo 'What would you like to do? (Enter the number of your choice)'
+ 	echo ''
+ 	while true; do
+  		echo '1. Install repositories, all packages and all flatpaks ?'
+  		echo '2. Install repositories and packages ?'
+  		echo '3. Install flatpaks ?'
+  		echo '4. Return'
+  		echo ''
+  		read -p 'Choose Command: ' INPUT
 
+	# Install repositories, all packages and all flatpaks
+  	if [ "$INPUT" -eq 1 ]; then
+   	install_repo_pkgs
+	install_flatpak
+   	echo 'Done.'
+   	install_packages
 
+	# Install repositories and all packages
+  	elif [ "$INPUT" -eq 2 ]; then
+   	install_repo_pkgs
+   	echo 'Done.'
+   	install_packages
+
+	# Install flatpaks
+  	elif [ "$INPUT" -eq 3 ]; then
+   	install_flatpak
+   	echo 'Done.'
+   	install_packages
+
+	# Return
+  	elif [ "$INPUT" -eq 4 ]; then
+	clear && main
+
+  	# Invalid Choice
+  	else
+	echo 'Invalid, choose again.'
+   	install_packages
+  	fi
+	done
+    main
 }
 
 
-
-# install essentials
-zypper install -y git make wget curl opi flatpak
-
-# add flatpak flathub repo
-flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-
-# install codecs from packman
-zypper install -y --from packman ffmpeg gstreamer-plugins-{good,bad,ugly,libav} libavcodec-full vlc-codecs
-CODECS='--from packman ffmpeg gstreamer-plugins-{good,bad,ugly,libav} libavcodec-full vlc-codecs'
-
-
-# install other packages
-zypper install -y qbittorrent vim tmux vlc zsh flatpak lollypop tor torbrowser-launcher brave-browser neofetch libvulkan_intel libvulkan_intel-32bit steam wine gnome-boxes lutris speedtest-cli autoconf automake sassc pkg-config optipng inkscape gtk3-devel gtk2-engine-murrine gimp libreoffice stow
-
-
-# install flatpaks
-flatpak install -y 
-FLATPAK='flathub com.discordapp.Discord com.github.tchx84.Flatseal com.microsoft.Teams com.skype.Client com.spotify.Client com.github.johnfactotum.Foliate com.bitwarden.desktop com.github.maoschanz.drawing'
-
-system_setting() {
+system_settings() {
     # set hostname
     echo "x230" > /etc/hostname
 
@@ -105,6 +173,45 @@ system_setting() {
     sudo systemctl disable --now packagekit
 }
 
+# Clean the system
+system_cleanup() {
+	INPUT=0
+ 	echo ''
+ 	echo 'What would you like to do? (Enter the number of your choice)'
+ 	echo ''
+ 	while true; do
+		echo ''
+		echo '1. Clean Package Cache ?'
+		echo '2. Clean tildes in users home ?'
+		echo '3. Return?'
+		echo ''
+		read -p 'Choose Command: ' INPUT
+
+		# Clean Package Cache
+		if [ "$INPUT" -eq 1 ]; then
+		zypper clean --all
+		echo 'Done.'
+		system_cleanup
+
+		# Clean tildes in user's home. Tilde is a backup file e.g. backup~ or .backup~
+		elif [ "$INPUT" -eq 2 ]; then
+		echo 'Cleaning tildes ...'
+		find /home -name "*~" -exec rm -i {} \; -or -name ".*~" -exec rm -i {} \;
+		echo 'Done.'
+		system_cleanup
+		 
+		# Return to the main menu
+		elif [ "$INPUT" -eq 3 ]; then
+		clear && main
+		 
+		# Invalid Choice
+		else
+		echo 'Invalid, choose again.'
+		system_cleanup
+		fi
+	done
+}
+
 # Exit with confirmation
 bye_bye() {
 	echo ''
@@ -112,10 +219,17 @@ bye_bye() {
  	if [ "$REPLY" == 'n' ]; then
 		clear && main
  	else
-	exit 12
+	exit 7
  	fi
 }
 
+install_complete() {
+    install_repos
+    install_repo_pkgs
+    install_flatpak
+
+    main
+}
 
 # The main function
 main() {
@@ -124,33 +238,23 @@ main() {
 	echo 'What would you like to do? (Enter the number of your choice)'
 	echo ''
 	while true; do
-	echo '1. Perform system update ?'
-	echo '2. Apply the needed patches ?'
-	echo '3. Install official community repositories ?'
-	echo '4. Install unofficial community repositories ?'
-	echo '5. Install your favourites applications ?'
-	echo '6. Install system tools applications ?'
-	echo '7. Install various servers and control them with yast2 ?'
-	echo '8. Install development tools ?'
-	echo '9. Install virtualization tools ?'
-	echo '10. Install third party applications ? (Google Chrome, Steam etc...)'
-	echo '11. Cleanup the system ?'
-	echo '12. Quit?'
+	echo '1. Perform complete system install including dotfiles ?'
+	echo '2. Only add repositories ?'
+    echo '3. Only install packages (opt in flatpak) ?'
+	#TODO echo '4. Only install dotfiles ?' 
+	echo '5. Only perform system setting ?'
+	echo '6. Cleanup the system ?'
+	echo '7. Quit?'
 	echo ''
 	read -p 'Choose Command: ' INPUT
 	case $INPUT in
 		1) clear && system_upgrade ;;
 	   	2) clear && system_patch ;;
-	   	3) clear && install_official_repo ;;
+	   	3) clear && install_packages ;;
 	   	4) clear && install_unofficial_repo ;;
-	   	5) clear && install_favorite_applications ;;
-	    6) clear && install_system_tools ;;
-	   	7) clear && install_various_servers ;;
-	   	8) clear && install_devlopment_tools ;;
-	   	9) clear && install_virtualization_tools ;;
-	   10) clear && install_thirdparty_applications ;;
-	   11) clear && clean_system ;;
-	   12) bye_bye ;;
+	   	5) clear && system_settings ;;
+	    6) clear && system_cleanup ;;
+	    7) bye_bye ;;
 	   * ) echo 'Invalid, choose again.' && main
 esac
 done
